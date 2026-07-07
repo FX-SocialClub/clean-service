@@ -156,6 +156,30 @@ h1{
 .hs-num em{font-style:normal;color:var(--teal);font-size:20px}
 .hs-lbl{font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--grey);margin-top:4px}
 
+/* spray paint canvas */
+#sprayCanvas{
+  position:absolute;inset:0;z-index:1;
+  pointer-events:none;
+  mix-blend-mode:normal;
+  cursor:none;
+}
+#hero.painting{cursor:none}
+#hero.painting .c-dot,#hero.painting .c-ring{display:none}
+.spray-cursor{
+  position:fixed;pointer-events:none;z-index:1301;display:none;
+  width:72px;height:72px;
+  border:2px solid rgba(255,255,255,.7);
+  border-radius:50%;
+  box-shadow:0 0 12px rgba(255,255,255,.35);
+  transform:translate(-50%,-50%);
+  transition:width .15s,height .15s;
+}
+.spray-cursor::after{
+  content:'';position:absolute;top:50%;left:50%;
+  width:6px;height:6px;background:rgba(255,255,255,.9);
+  border-radius:50%;transform:translate(-50%,-50%);
+}
+
 /* floating data chips over sponge */
 .data-chip{
   position:absolute;z-index:2;
@@ -494,6 +518,7 @@ footer .logo{font-size:13px}
 <body>
 
 <div class="scroll-line" id="scrollLine"></div>
+<div class="spray-cursor" id="sprayCursor"></div>
 <div class="c-dot" id="cDot"></div>
 <div class="c-ring" id="cRing"></div>
 
@@ -526,6 +551,8 @@ footer .logo{font-size:13px}
 <main>
 <section id="hero">
   <div class="scan"></div>
+<!-- spray paint canvas -->
+<canvas id="sprayCanvas"></canvas>
   <div class="data-chip dc1"><i></i>ЕКО-ЗАСОБИ · 100%</div>
   <div class="data-chip dc2"><i></i>БАКТЕРІЇ −99.9%</div>
   <div class="data-chip dc3"><i></i>pH 7.0 · БЕЗПЕЧНО</div>
@@ -960,6 +987,122 @@ document.getElementById('fSend').addEventListener('click',()=>{
   document.getElementById('fOk').style.display='block';
   n.value='';p.value='';
 });
+
+/* ---------- spray paint effect ---------- */
+(function(){
+  const hero=document.getElementById('hero');
+  const canvas=document.getElementById('sprayCanvas');
+  const ctx=canvas.getContext('2d');
+  const sprayCur=document.getElementById('sprayCursor');
+  let painting=false;
+  let lastX=null,lastY=null;
+
+  function resize(){
+    /* save current drawing */
+    const tmp=document.createElement('canvas');
+    tmp.width=canvas.width;tmp.height=canvas.height;
+    tmp.getContext('2d').drawImage(canvas,0,0);
+    canvas.width=hero.offsetWidth;
+    canvas.height=hero.offsetHeight;
+    ctx.drawImage(tmp,0,0);
+  }
+  canvas.width=hero.offsetWidth;
+  canvas.height=hero.offsetHeight;
+  addEventListener('resize',resize);
+
+  /* gradual fade loop */
+  function fadeLoop(){
+    ctx.save();
+    ctx.globalCompositeOperation='destination-out';
+    ctx.fillStyle='rgba(0,0,0,0.008)';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.restore();
+    requestAnimationFrame(fadeLoop);
+  }
+  fadeLoop();
+
+  /* spray dot cluster — radius x2 */
+  function sprayAt(cx,cy,radius){
+    const density=Math.floor(radius*3);
+    for(let i=0;i<density;i++){
+      const angle=Math.random()*Math.PI*2;
+      const r=Math.random()*radius;
+      const x=cx+Math.cos(angle)*r;
+      const y=cy+Math.sin(angle)*r;
+      const size=Math.random()*4+0.8;
+      const alpha=Math.random()*0.3+0.1;
+      ctx.beginPath();
+      ctx.arc(x,y,size,0,Math.PI*2);
+      ctx.fillStyle='rgba(255,255,255,'+alpha+')';
+      ctx.fill();
+    }
+  }
+
+  /* interpolate between points for smooth trail */
+  function sprayLine(x0,y0,x1,y1){
+    const dx=x1-x0,dy=y1-y0;
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    const steps=Math.max(Math.floor(dist/2),1);
+    for(let i=0;i<=steps;i++){
+      const t=i/steps;
+      const x=x0+dx*t;
+      const y=y0+dy*t;
+      sprayAt(x,y,36);
+    }
+  }
+
+  /* pointer-events only on the image area (right side) */
+  function isOnImage(e){
+    const rect=hero.getBoundingClientRect();
+    const x=e.clientX-rect.left;
+    /* image occupies roughly right 60% of hero on desktop */
+    return x>rect.width*0.35;
+  }
+
+  hero.addEventListener('mouseenter',function(e){
+    if(matchMedia('(pointer:fine)').matches && isOnImage(e)){
+      canvas.style.pointerEvents='auto';
+      hero.classList.add('painting');
+      sprayCur.style.display='block';
+    }
+  });
+
+  hero.addEventListener('mousemove',function(e){
+    const rect=hero.getBoundingClientRect();
+    const onImg=isOnImage(e);
+
+    if(matchMedia('(pointer:fine)').matches && onImg){
+      canvas.style.pointerEvents='auto';
+      hero.classList.add('painting');
+      sprayCur.style.display='block';
+      sprayCur.style.left=e.clientX+'px';
+      sprayCur.style.top=e.clientY+'px';
+    } else {
+      canvas.style.pointerEvents='none';
+      hero.classList.remove('painting');
+      sprayCur.style.display='none';
+      lastX=null;lastY=null;
+      return;
+    }
+
+    const cx=e.clientX-rect.left;
+    const cy=e.clientY-rect.top;
+
+    if(lastX!==null){
+      sprayLine(lastX,lastY,cx,cy);
+    } else {
+      sprayAt(cx,cy,18);
+    }
+    lastX=cx;lastY=cy;
+  });
+
+  hero.addEventListener('mouseleave',function(){
+    canvas.style.pointerEvents='none';
+    hero.classList.remove('painting');
+    sprayCur.style.display='none';
+    lastX=null;lastY=null;
+  });
+})();
 </script>
 </body>
 </html>
